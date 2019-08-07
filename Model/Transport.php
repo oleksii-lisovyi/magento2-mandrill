@@ -23,6 +23,10 @@ class Transport implements \Magento\Framework\Mail\TransportInterface
      */
     private $api;
     private $helper;
+    /**
+     * @var \Psr\Log\LoggerInterface
+     */
+    private $logger;
 
     /**
      * @param \Magento\Framework\Mail\MessageInterface $message
@@ -32,12 +36,14 @@ class Transport implements \Magento\Framework\Mail\TransportInterface
     public function __construct(
         \Ebizmarts\Mandrill\Model\Message $message,
         \Ebizmarts\Mandrill\Model\Api\Mandrill $api,
-        \Ebizmarts\Mandrill\Helper\Data $helper
+        \Ebizmarts\Mandrill\Helper\Data $helper,
+        \Psr\Log\LoggerInterface $logger
     ) {
     
         $this->message  = $message;
         $this->api      = $api;
         $this->helper   = $helper;
+        $this->logger   = $logger;
     }
     public function sendMessage()
     {
@@ -79,7 +85,19 @@ class Transport implements \Magento\Framework\Mail\TransportInterface
                     break;
             }
             $result = $mandrillApiInstance->messages->send($message);
-            $this->processApiCallResult($result);
+            try {
+                $this->processApiCallResult($result);
+            } catch (\Magento\Framework\Exception\MailException $e) {
+                $this->logger->error(
+                    sprintf(
+                        'We got "rejected" status from Mandrill for email with subject "%s". ' .
+                        'Please review the customer email %s, and process it again. Error details: %s',
+                        $this->message->getSubject(),
+                        implode(', ', $this->message->getTo()),
+                        (string)$e
+                    )
+                );
+            }
         } catch(\Exception $e) {
             $this->helper->log($e->getMessage());
         }
